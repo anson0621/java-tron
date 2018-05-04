@@ -384,22 +384,25 @@ public class NodeImpl extends PeerConnectionDelegate implements Node {
         logger.debug(e.getMessage(), e);
       }
     }
+    InvToSend sendPackage = new InvToSend();
+    HashMap<Sha256Hash, InventoryType> fetch = new HashMap<>();
     synchronized (advObjToFetch) {
-      InvToSend sendPackage = new InvToSend();
-      advObjToFetch.entrySet()
-          .forEach(idToFetch ->
-              getActivePeer().stream().filter(peer -> !peer.isBusy()
-                  && peer.getAdvObjSpreadToUs().containsKey(idToFetch.getKey()))
-                  .findFirst()
-                  .ifPresent(peer -> {
-                    //TODO: don't fetch too much obj from only one peer
-                    sendPackage.add(idToFetch, peer);
-                    advObjToFetch.remove(idToFetch.getKey());
-                    peer.getAdvObjWeRequested()
-                        .put(idToFetch.getKey(), Time.getCurrentMillis());
-                  }));
-      sendPackage.sendFetch();
+      fetch.putAll(advObjToFetch);
+      advObjToFetch.clear();
     }
+
+    fetch.entrySet()
+        .forEach(idToFetch ->
+            getActivePeer().stream().filter(peer -> !peer.isBusy()
+                && peer.getAdvObjSpreadToUs().containsKey(idToFetch.getKey()))
+                .findFirst()
+                .ifPresent(peer -> {
+                  //TODO: don't fetch too much obj from only one peer
+                  sendPackage.add(idToFetch, peer);
+                  peer.getAdvObjWeRequested()
+                      .put(idToFetch.getKey(), Time.getCurrentMillis());
+                }));
+    sendPackage.sendFetch();
   }
 
   private void consumerAdvObjToSpread() {
@@ -574,7 +577,9 @@ public class NodeImpl extends PeerConnectionDelegate implements Node {
         if (!requested[0]) {
           //TODO: make a error cache here, Don't handle error TRX or BLK repeatedly.
           if (!badAdvObj.containsKey(id)) {
-            this.advObjToFetch.put(id, msg.getInventoryType());
+            synchronized (advObjToFetch) {
+              this.advObjToFetch.put(id, msg.getInventoryType());
+            }
           }
         }
       }
